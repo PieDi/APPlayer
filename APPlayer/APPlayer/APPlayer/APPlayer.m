@@ -355,6 +355,9 @@ static void *PlayViewStatusObservationContext = &PlayViewStatusObservationContex
 - (void)PlayOrPause:(UIButton *)sender{
     
     if (self.durationTimer != nil) {
+        
+        [self.durationTimer invalidate];
+        self.durationTimer = nil;
         self.durationTimer = [NSTimer timerWithTimeInterval:0.2 target:self selector:@selector(finishedPlay:) userInfo:nil repeats:YES];
         [[NSRunLoop currentRunLoop] addTimer:self.durationTimer forMode:NSDefaultRunLoopMode];
     }
@@ -642,9 +645,9 @@ static void *PlayViewStatusObservationContext = &PlayViewStatusObservationContex
         }else{
             
         }
-        
+        WS(weakSelf);
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self.currentItem seekToTime:CMTimeMakeWithSeconds(time, 1.0 * NSEC_PER_SEC)];
+            [weakSelf.currentItem seekToTime:CMTimeMakeWithSeconds(time, 1.0 * NSEC_PER_SEC)];
         });
         
     }
@@ -658,6 +661,7 @@ static void *PlayViewStatusObservationContext = &PlayViewStatusObservationContex
     return(kCMTimeInvalid);
 }
 - (NSString *)convertTime:(CGFloat)second{
+    
     NSDate *d = [NSDate dateWithTimeIntervalSince1970:second];
     if (second/3600 >= 1) {
         [[self dateFormatter] setDateFormat:@"HH:mm:ss"];
@@ -689,6 +693,7 @@ static void *PlayViewStatusObservationContext = &PlayViewStatusObservationContex
 }
 
 - (void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event{
+    
     for(UITouch *touch in event.allTouches) {
         self.secondPoint = [touch locationInView:self];
     }
@@ -753,16 +758,8 @@ static void *PlayViewStatusObservationContext = &PlayViewStatusObservationContex
 
 
 -(void)dealloc{
-    NSLog(@"WMPlayer dealloc");
-    [self.player pause];
-    self.autoDismissTimer = nil;
-    self.durationTimer = nil;
-    self.player = nil;
-    [self.mTimer invalidate];
-    self.mTimer = nil;
     
-    [[NSNotificationCenter defaultCenter] removeObserver:self];
-    [self.currentItem removeObserver:self forKeyPath:@"status"];
+    NSLog(@"WMPlayer dealloc");
 }
 
 
@@ -771,26 +768,27 @@ static void *PlayViewStatusObservationContext = &PlayViewStatusObservationContex
     
     AppDelegate *mDelegate = (AppDelegate *)[UIApplication sharedApplication].delegate;
     //放widow上
+    WS(weakSelf);
     [self removeFromSuperview];
     self.backgroundColor = [UIColor blackColor];
     [UIView animateWithDuration:0.5f animations:^{
 //        self.transform = CGAffineTransformIdentity;
-        self.frame = CGRectMake(0, 64, kScreenWidth, 3*kScreenWidth/4);
-        self.playerLayer.frame =  self.bounds;
-        [mDelegate.window addSubview:self];
-        self.bottomView.frame = CGRectMake(0, CGRectGetHeight(self.frame)-40, CGRectGetWidth(self.frame), 40);
-        self.closeBtn.frame = CGRectMake(5, 5, 30, 30);
-        self.playOrPauseBtn.frame = CGRectMake(0, 0, 40, 40);
-        self.progressSlider.frame = CGRectMake(45, 0, CGRectGetWidth(self.bottomView.frame)-90, 40);
-        self.fullScreenBtn.frame = CGRectMake(CGRectGetWidth(self.bottomView.frame)-40, 0, 40, 40);
-        self.timeLabel.frame = CGRectMake(45, 20, CGRectGetWidth(self.bottomView.frame)-90, 20);
-        self.playBtn.center = CGPointMake(CGRectGetWidth(self.frame)/2, CGRectGetHeight(self.frame)/2);
+        weakSelf.frame = CGRectMake(0, 64, kScreenWidth, 3*kScreenWidth/4);
+        weakSelf.playerLayer.frame =  weakSelf.bounds;
+        [mDelegate.window addSubview:weakSelf];
+        weakSelf.bottomView.frame = CGRectMake(0, CGRectGetHeight(weakSelf.frame)-40, CGRectGetWidth(weakSelf.frame), 40);
+        weakSelf.closeBtn.frame = CGRectMake(5, 5, 30, 30);
+        weakSelf.playOrPauseBtn.frame = CGRectMake(0, 0, 40, 40);
+        weakSelf.progressSlider.frame = CGRectMake(45, 0, CGRectGetWidth(weakSelf.bottomView.frame)-90, 40);
+        weakSelf.fullScreenBtn.frame = CGRectMake(CGRectGetWidth(weakSelf.bottomView.frame)-40, 0, 40, 40);
+        weakSelf.timeLabel.frame = CGRectMake(45, 20, CGRectGetWidth(weakSelf.bottomView.frame)-90, 20);
+        weakSelf.playBtn.center = CGPointMake(CGRectGetWidth(weakSelf.frame)/2, CGRectGetHeight(weakSelf.frame)/2);
         
     }completion:^(BOOL finished) {
-        self.isFullscreen = NO;
-        self.fullScreenBtn.selected = NO;
-        self.isSmallScreen = YES;
-        [mDelegate.window bringSubviewToFront:self];
+        weakSelf.isFullscreen = NO;
+        weakSelf.fullScreenBtn.selected = NO;
+        weakSelf.isSmallScreen = YES;
+        [mDelegate.window bringSubviewToFront:weakSelf];
     }];
     
 }
@@ -848,14 +846,23 @@ static void *PlayViewStatusObservationContext = &PlayViewStatusObservationContex
  */
 -(void)releaseAPPlayer{
     
+    
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+    [self.currentItem removeObserver:self forKeyPath:@"status"];
+    
+    [self.player pause];
     [self.player.currentItem cancelPendingSeeks];
     [self.player.currentItem.asset cancelLoading];
     [self pause];
     //移除观察者
-    [self.currentItem removeObserver:self forKeyPath:@"status"];
-    [self removeFromSuperview];
     [self.playerLayer removeFromSuperlayer];
     [self.player replaceCurrentItemWithPlayerItem:nil];
+    [self.subviews enumerateObjectsUsingBlock:^(__kindof UIView * _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
+        [obj removeFromSuperview];
+        obj = nil;
+    }];
+    [self removeFromSuperview];
+    
     self.player = nil;
     self.currentItem = nil;
     //释放定时器，否侧不会调用WMPlayer中的dealloc方法
@@ -863,9 +870,16 @@ static void *PlayViewStatusObservationContext = &PlayViewStatusObservationContex
     self.autoDismissTimer = nil;
     [self.durationTimer invalidate];
     self.durationTimer = nil;
+    [self.mTimer invalidate];
+    self.mTimer = nil;
+    
     self.playOrPauseBtn = nil;
     self.playBtn = nil;
     self.playerLayer = nil;
+    
+    
+   
+
     NSLog(@" 播放器释放");
     
 }

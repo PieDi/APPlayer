@@ -44,6 +44,9 @@
         [self.view bringSubviewToFront:apPlayer];
     }else{
         [apPlayer releaseAPPlayer];
+        [apPlayer removeFromSuperview];
+        apPlayer = nil;
+        
     }
     
     
